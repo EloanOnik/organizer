@@ -1,0 +1,18 @@
+{
+    "jpg": "Images",
+    "png": "Images",
+    "jpeg": "Images", 
+    "gif": "Images",
+    "doc": "Documents",
+    "pdf": "Documents",
+    "docx": "Documents",
+    "txt": "Documents",
+    "ppt": "Documents",
+    "pptx": "Documents",
+    "zip": "Archives",
+    "rar": "Archives",
+    "mp4": "Videos",
+    "mov": "Videos",
+    "mp3": "Music",
+    "wav": "Music"
+}

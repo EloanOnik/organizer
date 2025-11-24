@@ -2,30 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 
+let typeMap;
 //Планы: Сохранять лог перемещений чтобы можно было откатить
 
-
-// Создаем интерфейс для ввода
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
-
-// Функция для вопроса
-function ask(question) {
-    return new Promise((resolve) => {
-        rl.question(question, (answer) => {
-            resolve(answer);
-        });
-    });
-}
-// Функция, которая определяет тип файла по расширению
-function getFolderName(filename) {
-    // Получаем расширение файла (последние буквы после точки)
-    const extension = filename.split('.').pop().toLowerCase();
-    
-    // Словарь: расширение -> папка
-    const typeMap = {
+try {
+    const configText = fs.readFileSync('config.json', 'utf8');
+    typeMap = JSON.parse(configText);
+    console.log('✅ Настройки загружены из файла');
+} catch (error) {
+    // Если ошибка - используем стандартные настройки
+    typeMap = {
         'jpg': 'Images',
         'jpeg': 'Images', 
         'png': 'Images',
@@ -41,11 +27,61 @@ function getFolderName(filename) {
         'mp3': 'Music',
         'wav': 'Music'
     };
-    
-    // Если расширение есть в словаре - возвращаем папку, иначе 'Other'
-    return typeMap[extension] || 'Other';
+    console.log('⚠️  Используются стандартные настройки');
 }
 
+//Интерфейс для ввода
+
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+function ask(question) {
+    return new Promise((resolve) => {
+        rl.question(question, (answer) => {
+            resolve(answer);
+        });
+    });
+}
+
+// Функция для выбора папки
+async function chooseFolder() {
+    console.log('\n📁 ВЫБОР ПАПКИ ДЛЯ СОРТИРОВКИ:');
+    console.log('1. Папка Загрузки (по умолчанию)');
+    console.log('2. Текущая папка');
+    console.log('3. Указать путь вручную');
+    
+    const choice = await ask('\nВыберите вариант (1/2/3): ');
+    
+    switch(choice) {
+        case '1':
+            return require('os').homedir() + '/Downloads';
+        case '2':
+            return process.cwd();
+        case '3':
+            const customPath = await ask('Введите путь к папке: ');
+            return customPath.trim();
+        default:
+            console.log('Используется папка Загрузки по умолчанию');
+            return require('os').homedir() + '/Downloads';
+    }
+}
+
+// Функция для проверки существования папки
+function checkFolderExists(folderPath) {
+    if (!fs.existsSync(folderPath)) {
+        console.log(`❌ Папка не существует: ${folderPath}`);
+        return false;
+    }
+    return true;
+}
+
+// Функция, которая определяет тип файла по расширению
+function getFolderName(filename) {
+    const extension = filename.split('.').pop().toLowerCase();
+    return typeMap[extension] || 'Other';
+}
 // Функция для создания папки, если её нет
 function ensureFolderExists(folderPath) {
     if (!fs.existsSync(folderPath)) {
@@ -68,12 +104,21 @@ function moveFile(oldPath, newPath) {
 
 // ОСНОВНОЙ КОД
 async function main() {
-    console.log("🔍 Сканирую папку Загрузки...");
+    // ВЫБИРАЕМ ПАПКУ для сортировки
+    const sortFolder = await chooseFolder();
     
-    const downloadsPath = require('os').homedir() + '/Downloads';
+    // Проверяем что папка существует
+    if (!checkFolderExists(sortFolder)) {
+        console.log('❌ Программа завершена');
+        rl.close();
+        return;
+    }
     
-    const files = fs.readdirSync(downloadsPath).filter(item => {
-        const itemPath = `${downloadsPath}/${item}`;
+    console.log(`🔍 Сканирую папку: ${sortFolder}`);
+    
+    // Используем выбранную папку вместо жестко заданной
+    const files = fs.readdirSync(sortFolder).filter(item => {
+        const itemPath = path.join(sortFolder, item);
         return fs.statSync(itemPath).isFile() && !item.startsWith('.');
     });
     
@@ -106,17 +151,17 @@ async function main() {
     // ВЫПОЛНЯЕМ СОРТИРОВКУ
     console.log('\n🔄 Начинаю сортировку...');
     
-    // Создаем папки
+    // Создаем папки В ВЫБРАННОЙ ПАПКЕ
     const folders = new Set();
     files.forEach(file => folders.add(getFolderName(file)));
-    folders.forEach(folder => ensureFolderExists(`${downloadsPath}/${folder}`));
+    folders.forEach(folder => ensureFolderExists(path.join(sortFolder, folder)));
     
-    // Перемещаем файлы
+    // Перемещаем файлы В ВЫБРАННОЙ ПАПКЕ
     let movedCount = 0;
     files.forEach(file => {
         const folder = getFolderName(file);
-        const oldPath = `${downloadsPath}/${file}`;
-        const newPath = `${downloadsPath}/${folder}/${file}`;
+        const oldPath = path.join(sortFolder, file);
+        const newPath = path.join(sortFolder, folder, file);
         
         if (moveFile(oldPath, newPath)) {
             movedCount++;
@@ -124,6 +169,7 @@ async function main() {
     });
     
     console.log(`\n🎉 Готово! Перемещено ${movedCount} из ${files.length} файлов`);
+    console.log(`📁 Папка: ${sortFolder}`);
     rl.close();
 }
 
